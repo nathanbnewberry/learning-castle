@@ -657,7 +657,9 @@
     return g;
   }
   function placePerson(kind, animate) {
-    const posts = POSTS[kind]; const n = castle.people.filter(p => p === kind).length; const [x, z] = posts[n % posts.length];
+    // no cap: the first few take their fixed posts, every extra one gets a spot on a widening ring around the castle (guards on the walls, villagers inside, horses east, farms west)
+    const posts = POSTS[kind]; const n = castle.people.filter(p => p === kind).length; let x, z;
+    if (n < posts.length) [x, z] = posts[n]; else { const e = n - posts.length; const ring = Math.floor(e / 7); const a = (e % 7) * 0.9 + ring * 0.45 + (kind === 'farm' ? 2.4 : kind === 'horse' ? -0.7 : 0.6); const r = (kind === 'guard' ? 10.5 : kind === 'villager' ? 6 : 13.5) + ring * 1.6; x = Math.round(Math.cos(a) * r * 2) / 2; z = Math.round(Math.sin(a) * r * 2) / 2 - 3; }
     const g = buildPerson(kind, x, z); castle.people.push(kind);
     if (animate) { g.position.y = GROUND + 6; tween(0.6, k => { g.position.y = GROUND + 6 * (1 - k); }, easeIn, () => { SFX.thud(); tmp.set(x, GROUND, z); dust(tmp); }); }
     return g;
@@ -1640,9 +1642,9 @@
     const total = Object.values(PIECES).filter(p => !p.people).reduce((s, p) => s + p.gold, 0);
     cui.hint.textContent = castle.built.length >= 5 ? 'Your castle is complete! Hire guards, villagers, horses and farms.' : `Build your castle piece by piece. The whole castle costs ${total} gold. Farms earn coins while you play.`;
     cui.cards.innerHTML = Object.entries(PIECES).map(([k, p]) => {
-      const count = castle.people.filter(x => x === k).length; const built = !p.people && castle.built.some(b => b.kind === k); const full = p.people ? count >= p.max : built; const can = affordable(k) && !full;
+      const count = castle.people.filter(x => x === k).length; const built = !p.people && castle.built.some(b => b.kind === k); const full = p.people ? false : built; const can = affordable(k) && !full;
       const cost = `<span class="cost"><i style="background:#ffd23f"></i>${p.gold}${p.gems ? ` <i style="background:#34d399"></i>${p.gems}` : ''}</span>`;
-      return `<button type="button" class="bp" data-kind="${k}" ${can ? '' : 'disabled'} aria-disabled="${!can}">${BP_ICON[k]}<span>${p.name}${p.people ? ` ${count}/${p.max}` : ''}</span>${cost}<small>${built ? 'BUILT' : full ? 'all hired' : can ? p.sub : 'not enough treasure'}</small></button>`;
+      return `<button type="button" class="bp" data-kind="${k}" ${can ? '' : 'disabled'} aria-disabled="${!can}">${BP_ICON[k]}<span>${p.name}${p.people ? ` x${count}` : ''}</span>${cost}<small>${built ? 'BUILT' : full ? 'all hired' : can ? p.sub : 'not enough treasure'}</small></button>`;
     }).join('');
     cui.cards.hidden = false; cui.actions.hidden = false;
     cui.cards.querySelectorAll('.bp:not([disabled])').forEach(b => b.addEventListener('click', () => buyPiece(b.dataset.kind)));
