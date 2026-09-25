@@ -146,6 +146,9 @@
   #room-hint { font-size: 13px; color: #fde68a; text-shadow: 0 2px 0 #000; margin-bottom: 8px; }
   .rn { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .rn button.on { outline: 3px solid #f5b301; outline-offset: 2px; }
+  button, .ans, .sw, .bp, .profile, .lvl { touch-action: manipulation; }
+  canvas { touch-action: none; }
+  @media (max-height: 820px) { .bp { width: 132px; padding: 8px 6px; gap: 4px; } .bp svg { width: 44px; height: 44px; } #castle-hint { font-size: 13px; } #castle-board { padding-top: 8px; padding-bottom: 8px; } }
   #flash { position: absolute; inset: 0; background: #ff2d2d; opacity: 0; pointer-events: none; z-index: 4; }
   #flash.go { animation: flashFade .5s ease-out forwards; }
   @keyframes flashFade { 0% { opacity: .45; } 100% { opacity: 0; } }
@@ -181,6 +184,7 @@
   <div id="qpanel" class="wood hide">
     <div id="question" class="px">7 + 5 = ?</div>
     <div id="answers"></div>
+    <button class="btn blue small" type="button" id="btn-hear" hidden style="margin-top:8px">🔊 HEAR IT AGAIN</button>
   </div>
   <div id="flash"></div>
 
@@ -231,6 +235,7 @@
       </div>
       <div id="step-builder" hidden>
         <p class="px" style="font-size:12px;color:#ffe9a8;line-height:1.7">BUILD YOUR KNIGHT</p>
+        <div id="scroll-hint" class="px" hidden style="font-size:10px;color:#fde68a;line-height:1.8">▼ SCROLL DOWN TO SAVE YOUR KNIGHT ▼</div>
         <div class="field"><label for="knight-name" class="px">NAME</label><input id="knight-name" type="text" maxlength="14" placeholder="Type your name" autocomplete="off"></div>
         <div class="field"><label class="px">KNIGHT</label><div class="swatches" id="sw-body"></div></div>
         <div class="field"><label class="px">SKIN</label><div class="swatches" id="sw-skin"></div></div>
@@ -250,6 +255,7 @@
       <h1 style="color:#14532d; text-shadow: 4px 4px 0 #d4d4d8;">PARENT VIEW</h1>
       <p style="color:#1f2937">Every knight's practice, saved in this browser. The real game saves this to an account.</p>
       <div id="parent-table" style="width:100%; overflow-x:auto"></div>
+      <details style="width:100%; text-align:left"><summary class="px" style="cursor:pointer;font-size:11px;color:#4b5563">BACKUP AND RESTORE (move the knights to another device)</summary><textarea id="backup-code" rows="3" spellcheck="false" style="width:100%;box-sizing:border-box;font-size:11px;margin-top:6px"></textarea><div class="row"><button class="btn blue small" type="button" id="btn-backup-copy">COPY CODE</button><button class="btn blue small" type="button" id="btn-backup-restore">RESTORE FROM CODE</button></div><div id="backup-msg" style="font-size:13px;color:#4b5563;margin-top:4px">Copy the code here, paste it into the same box on the other device, tap RESTORE.</div></details>
       <div id="voice-panel" style="width:100%; display:flex; flex-direction:column; gap:10px; text-align:left; color:#1f2937; font-size:17px; font-weight:600"></div>
       <div class="row"><button class="btn blue small" type="button" id="btn-unlock">UNLOCK ALL LEVELS (DEMO)</button><button class="btn blue small" type="button" id="btn-parent-close">CLOSE</button></div>
     </div>
@@ -305,7 +311,7 @@
   /* ---------- renderer / scene ---------- */
   const canvas = $('#scene');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const TOUCH = (navigator.maxTouchPoints || 0) > 1; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TOUCH ? 1.5 : 2)); // tablets render at 1.5x, not full Retina, to keep the frame rate up
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   const scene = new THREE.Scene();
@@ -315,7 +321,7 @@
   const CAM = { dist: 12.4, height: 4.4, push: 0, curDist: 12.4, curH: 4.4 };
   const hemi = new THREE.HemisphereLight(0xcfe9ff, 0x4f7a3a, 0.75); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff2d6, 1.3); sun.position.set(-7, 14, 8); sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = -22; sun.shadow.camera.right = 22; sun.shadow.camera.top = 22; sun.shadow.camera.bottom = -22; sun.shadow.camera.near = 1; sun.shadow.camera.far = 80; sun.shadow.bias = -0.0006;
+  sun.shadow.mapSize.set(TOUCH ? 1024 : 2048, TOUCH ? 1024 : 2048); sun.shadow.camera.left = -22; sun.shadow.camera.right = 22; sun.shadow.camera.top = 22; sun.shadow.camera.bottom = -22; sun.shadow.camera.near = 1; sun.shadow.camera.far = 80; sun.shadow.bias = -0.0006;
   scene.add(sun);
   const rim = new THREE.DirectionalLight(0x9db4ff, 0.35); rim.position.set(6, 6, -10); scene.add(rim);
   const skyMat = new THREE.ShaderMaterial({
@@ -947,7 +953,7 @@
 
   /* ---------- audio: one context, a music bus with a soft filter and echo, and a dry bus for effects ---------- */
   let AC = null, musicBus = null, fxBus = null;
-  function audioOn() { try { if (!AC) { AC = new (window.AudioContext || window.webkitAudioContext)(); fxBus = AC.createGain(); fxBus.gain.value = 0.9; fxBus.connect(AC.destination); const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; const delay = AC.createDelay(1); delay.delayTime.value = 0.31; const fb = AC.createGain(); fb.gain.value = 0.22; const wet = AC.createGain(); wet.gain.value = 0.35; musicBus = AC.createGain(); musicBus.gain.value = 0.55; musicBus.connect(lp); lp.connect(AC.destination); lp.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(AC.destination); } if (AC.state === 'suspended') AC.resume(); } catch (e) { AC = null; } }
+  function audioOn() { if ('speechSynthesis' in window && !audioOn.primed) { audioOn.primed = true; try { const u = new SpeechSynthesisUtterance('.'); u.volume = 0.01; window.speechSynthesis.speak(u); } catch (e) {} } try { if (!AC) { AC = new (window.AudioContext || window.webkitAudioContext)(); fxBus = AC.createGain(); fxBus.gain.value = 0.9; fxBus.connect(AC.destination); const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; const delay = AC.createDelay(1); delay.delayTime.value = 0.31; const fb = AC.createGain(); fb.gain.value = 0.22; const wet = AC.createGain(); wet.gain.value = 0.35; musicBus = AC.createGain(); musicBus.gain.value = 0.55; musicBus.connect(lp); lp.connect(AC.destination); lp.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(AC.destination); } if (AC.state === 'suspended') AC.resume(); } catch (e) { AC = null; } }
   let tone = null, noise = null;
   function toneRaw(f, dur, type, gain, slide) { if (!AC) return; const o = AC.createOscillator(), g = AC.createGain(); o.type = type || 'square'; o.frequency.setValueAtTime(f, AC.currentTime); if (slide) o.frequency.exponentialRampToValueAtTime(slide, AC.currentTime + dur); g.gain.setValueAtTime(gain || 0.08, AC.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + dur); o.connect(g).connect(fxBus); o.start(); o.stop(AC.currentTime + dur); }
   function noiseRaw(dur, freq, gain) { if (!AC) return; const n = AC.sampleRate * dur, b = AC.createBuffer(1, n, AC.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; const s = AC.createBufferSource(); s.buffer = b; const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq; const g = AC.createGain(); g.gain.setValueAtTime(gain || 0.12, AC.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + dur); s.connect(f).connect(g).connect(fxBus); s.start(); }
@@ -1029,7 +1035,7 @@
   const VOICE = { goblin: { v: 'female', pitch: 1.6, rate: 1.25 }, dark: { v: 'deep', pitch: 0.55, rate: 0.85 }, troll: { v: 'deep', pitch: 0.45, rate: 0.7 }, dragon: { v: 'male', pitch: 0.8, rate: 0.98 }, knight: { v: 'male', pitch: 1.05, rate: 1.1 }, knightGirl: { v: 'female', pitch: 1.15, rate: 1.1 }, guard: { v: 'male', pitch: 0.9, rate: 1.0 }, villager: { v: 'female', pitch: 1.1, rate: 1.05 }, farm: { v: 'male', pitch: 0.95, rate: 0.95 } };
   let speakingUntil = 0;
   const VOICE_ROLE = (who) => who === 'knight' || who === 'knightGirl' ? 'knight' : (who === 'guard' || who === 'villager' || who === 'farm' || who === 'narrator') ? 'narrator' : 'villain';
-  function say(text, who, force) { if (!G.voices || G.muted || !('speechSynthesis' in window)) return; const v = VOICE[who === 'knight' && K.girl ? 'knightGirl' : who] || VOICE.knight; const now = performance.now(); if (!force && now < speakingUntil) return; try { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text.replace(/[{}]/g, '')); let voice = VOICES[v.v]; const pickName = (DB.voices || {})[VOICE_ROLE(who)]; if (pickName) { const chosen = window.speechSynthesis.getVoices().find(x => x.name === pickName); if (chosen) voice = chosen; } if (voice) u.voice = voice; u.pitch = v.pitch; u.rate = v.rate; u.volume = 1; speakingUntil = now + 400 + text.length * 60; window.speechSynthesis.speak(u); } catch (e) {} }
+  function say(text, who, force) { if ((!G.voices && who !== 'narrator') || G.muted || !('speechSynthesis' in window)) return; const v = VOICE[who === 'knight' && K.girl ? 'knightGirl' : who] || VOICE.knight; const now = performance.now(); if (!force && now < speakingUntil) return; try { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text.replace(/[{}]/g, '')); let voice = VOICES[v.v]; const pickName = (DB.voices || {})[VOICE_ROLE(who)]; if (pickName) { const chosen = window.speechSynthesis.getVoices().find(x => x.name === pickName); if (chosen) voice = chosen; } if (voice) u.voice = voice; u.pitch = v.pitch; u.rate = v.rate; u.volume = 1; speakingUntil = now + 400 + text.length * 60; window.speechSynthesis.speak(u); } catch (e) {} }
   const KNIGHT_LINES = ['Yeah!', 'Take that!', 'Ha!', 'For the castle!', 'Got you!', 'Too slow!', 'Math wins!', 'Boom!', 'Nice try!', 'That is how we do it!', 'Have some of this!', 'Back to your cave!', 'Not today!'];
   const KNIGHT_HURT = ['Ow! Right in the chest!', 'Ah! That got my shoulder!', 'Ow, my head! You will not beat me!', 'Oof! My arm! I am still standing!', 'Argh! That stings! Is that all you have got?', 'Ow, that hurt! You are not going to win!', 'Eek! My leg! Okay, now I am mad.', 'Ohh... that one got through. Not again!', 'Ouch! Right on the helmet! Nice shot, ugly.', 'Ow! My shield arm! I can still fight!', 'Ugh! My ribs! You hit like a pillow.', 'Ow! Right in the nose! That is going to leave a mark.'];
   const KNIGHT_DYING = ['Ah... you got me.', 'Ohh... not like this...', 'Uhh... I fall...'];
@@ -1406,12 +1412,21 @@
     if (op === '×') { a = 2 + Math.floor(Math.random() * 9); b = 2 + Math.floor(Math.random() * 9); return { a, b, op, ans: a * b, key: `${a}x${b}` }; }
     b = 2 + Math.floor(Math.random() * 9); const q = 2 + Math.floor(Math.random() * 9); a = b * q; return { a, b, op, ans: q, key: `${a}/${b}` };
   }
-  function choices(q) { if (q.visual) return q.options.sort(() => Math.random() - 0.5); const s = new Set([q.ans]); const near = q.op === '×' ? [q.ans + q.a, q.ans - q.a, q.ans + q.b, q.ans - q.b, q.ans + 1, q.ans - 1] : q.op === '÷' ? [q.ans + 1, q.ans - 1, q.ans + 2, q.ans - 2] : [q.ans + 1, q.ans - 1, q.ans + 2, q.ans - 2, q.ans + 10, q.ans - 10, q.ans + 3]; for (const t of near) { if (s.size >= 3) break; if (t >= 0 && t <= 100 && !s.has(t)) s.add(t); } return [...s].sort(() => Math.random() - 0.5); }
+  // wrong answers come from a wide pool (near misses, off-by-ten, the other operation, a neighbour times table) picked at random, so the right one is never "the middle number"
+  function choices(q) { if (q.visual) return q.options.sort(() => Math.random() - 0.5); const s = new Set([q.ans]);
+    const pool = q.op === '×' ? [q.ans + q.a, q.ans - q.a, q.ans + q.b, q.ans - q.b, q.ans + 1, q.ans - 1, q.ans + 2, q.ans - 2, q.a * (q.b + 1), q.a * (q.b - 1), q.ans + 10, q.ans - 10, q.a + q.b]
+      : q.op === '÷' ? [q.ans + 1, q.ans - 1, q.ans + 2, q.ans - 2, q.ans + 3, q.ans - 3, q.b, q.a - q.b, q.ans * 2, q.ans + 10]
+      : [q.ans + 1, q.ans - 1, q.ans + 2, q.ans - 2, q.ans + 3, q.ans - 3, q.ans + 10, q.ans - 10, q.ans + 4, q.ans - 4, q.op === '+' ? Math.abs(q.a - q.b) : q.a + q.b, q.op === '+' ? q.ans + q.b : q.a - q.b - q.b];
+    const ok = pool.filter(t => Number.isInteger(t) && t >= 0 && t <= 144 && t !== q.ans);
+    const side = Math.random() < 0.5 ? 1 : -1; let cand = Math.random() < 0.4 ? ok.filter(t => Math.sign(t - q.ans) === side) : ok; if (cand.length < 2) cand = ok; // sometimes both wrong answers sit on the same side, so the right one is not always in the middle
+    while (s.size < 3 && cand.length) s.add(cand.splice(Math.floor(Math.random() * cand.length), 1)[0]);
+    let k = 1; while (s.size < 3) { s.add(q.ans + k); k++; }
+    return [...s].sort(() => Math.random() - 0.5); }
   function explain(q) {
     if (q.visual) return { eq: q.text, text: q.why, blocks: shapeSvg(q.answer.shape, COLORS[q.answer.color]) };
     const eq = `${q.a} ${q.op} ${q.b} = ${q.ans}`; let text = '', blocks = '';
     const B = (n, cls) => Array.from({ length: n }, () => `<i class="${cls || ''}"></i>`).join('');
-    if (q.op === '+') { if (q.ans <= 10) { text = `Start at ${q.a}. Count up ${q.b} more: ${q.ans}.`; blocks = B(q.a) + B(q.b, 'g'); } else { const c = 10 - q.a, r = q.b - c; text = `${q.a} needs ${c} to make 10. Then ${r} more makes ${q.ans}.`; blocks = B(q.a) + B(c, 'g') + '<span class="gap"></span>' + B(r, 'g'); } }
+    if (q.op === '+') { if (q.ans <= 10 || q.a >= 10) { text = `Start at ${q.a}. Count up ${q.b} more: ${q.ans}.`; blocks = B(q.a) + B(q.b, 'g'); } else { const c = 10 - q.a, r = q.b - c; text = `${q.a} needs ${c} to make 10. Then ${r} more makes ${q.ans}.`; blocks = B(q.a) + B(c, 'g') + '<span class="gap"></span>' + B(r, 'g'); } }
     else if (q.op === '-') { if (q.a <= 10) { text = `Start with ${q.a}. Take away ${q.b}. ${q.ans} are left.`; blocks = B(q.ans) + B(q.b, 'x'); } else { const down = q.a - 10; if (q.b <= down) { text = `Count back ${q.b} from ${q.a}: ${q.ans}.`; blocks = B(10) + '<span class="gap"></span>' + B(down - q.b) + B(q.b, 'x'); } else { const rest = q.b - down; text = `${q.a} take away ${down} lands on 10. Then take ${rest} more: ${q.ans}.`; blocks = B(10 - rest) + B(rest, 'x') + '<span class="gap"></span>' + B(down, 'x'); } } }
     else if (q.op === '×') { text = `${q.a} groups of ${q.b}. Skip count by ${q.b}: ${Array.from({ length: q.a }, (_, i) => (i + 1) * q.b).join(', ')}.`; blocks = Array.from({ length: q.a }, () => B(q.b, 'g') + '<span class="gap"></span>').join(''); }
     else { text = `Share ${q.a} into groups of ${q.b}. That makes ${q.ans} groups.`; blocks = Array.from({ length: q.ans }, () => B(q.b) + '<span class="gap"></span>').join(''); }
@@ -1425,7 +1440,7 @@
     el.answers.innerHTML = '';
     choices(G.q).forEach(v => { const b = document.createElement('button'); b.type = 'button'; b.className = 'ans'; if (G.q.visual) { b.innerHTML = shapeSvg(v.shape, COLORS[v.color]); b.dataset.v = G.q.key.startsWith('shape') ? v.shape : v.color; b.setAttribute('aria-label', v.color + ' ' + v.shape); } else { b.textContent = v; b.dataset.v = v; } b.addEventListener('click', () => answer(G.q.visual ? b.dataset.v : +b.dataset.v, b)); el.answers.appendChild(b); });
     el.qpanel.classList.remove('hide');
-    if (G.q.visual) { setTimeout(() => say(G.q.text, 'narrator', true), 900); } else taunt(pickFresh(E.taunts, 'taunt'), 2200); if (E.noise) SFX[E.noise]();
+    $('#btn-hear').hidden = !G.q.visual; if (G.q.visual) { say(G.q.text, 'narrator', true); } else taunt(pickFresh(E.taunts, 'taunt'), 2200); if (E.noise) SFX[E.noise]();
     E.windup();
   }
   function lockAnswers(picked) { [...el.answers.children].forEach(b => { b.disabled = true; if (b.dataset.v == G.q.ans) b.classList.add('right'); else if (b === picked) b.classList.add('wrong'); }); }
@@ -1520,7 +1535,7 @@
     const n = 15; for (let i = 0; i < n + gems; i++) wait(1.2 + i * 0.28, () => { const gem = i >= n; const src = from.clone(); src.y += 1.2 + Math.random(); const dst = c.g.position.clone(); dst.y += 0.9; const dir = dst.clone().sub(src); const len = dir.length(); dir.normalize().multiplyScalar(len * 1.6); dir.y += 2.5; emit(src, dir, 1.2, 0.6, gem ? ['34d399', '6ee7b7', 'ffffff'] : ['ffd23f', 'ffe66d', 'f5b301'], 6, gem ? 8 : 6, 0.5); SFX.coin(i % 5); if (gem) SFX.magic(); floatText(gem ? '+1 JEWEL' : '+10', dst, gem ? 'gem' : ''); c.gold.forEach((m, j) => { if (j <= Math.floor(i / 2)) m.visible = true; }); c.g.position.y = GROUND + 0.05; tween(0.2, k => { c.g.position.y = GROUND + Math.sin(k * Math.PI) * 0.12; }); });
     wait(1.4 + (n + gems) * 0.28 + 0.3, () => { tween(0.4, k => { c.lid.rotation.x = -1.9 * (1 - k); c.gl.material.opacity = 0.6 * (1 - k); c.light.intensity = 1.5 * (1 - k); }, easeIn, () => { SFX.thud(); }); wait(0.5, () => tween(0.5, k => { c.g.position.y = GROUND + Math.sin(k * Math.PI) * 0.5; c.g.rotation.y = -Math.PI / 2 + Math.PI * 2 * k; }, linear)); }); }
   function enemyDies() {
-    G.state = 'won'; SFX.die(); taunt(E.dieTaunt, 2500); const lvl = LEVELS.find(l => l.id === currentLevel); G.pendingLoot = { gold: 150, gems: 3 }; say('Yeah! Got you!', 'knight', true);
+    G.state = 'won'; SFX.die(); taunt(E.dieTaunt, 2500); const lvl = LEVELS.find(l => l.id === currentLevel); G.pendingLoot = { gold: 150, gems: 3 }; if (P) P.pendingLoot = G.pendingLoot; say('Yeah! Got you!', 'knight', true);
     if (P) { P.stats.wins = (P.stats.wins || 0) + 1; P.levels = P.levels || {}; P.levels[currentLevel] = 'done'; const idx = LEVELS.findIndex(l => l.id === currentLevel); if (idx + 1 < LEVELS.length && P.levels[LEVELS[idx + 1].id] !== 'done') P.levels[LEVELS[idx + 1].id] = 'open'; saveDB(); }
     const fx = knight.position.x; tween(0.5, k => { knight.position.x = fx + (KMARK.x + 1.2 - fx) * k; }, easeInOut); E.die(); E.hitPoint(); wait(0.6, () => gatherLoot(tmp.clone(), 150, 3));
     // the celebration: a little dance, then two backflips, then the weapon held high
@@ -1547,6 +1562,7 @@
   // review mode: every land is open until the parent switches the real progression on
   function levelStatus(id) { if (!P) return 'locked'; const s = (P.levels && P.levels[id]) || (id === 'goblin' ? 'open' : 'locked'); if (!DB.locks && s === 'locked') return 'open'; return s; }
   function showMap() {
+    lootChest.g.visible = false;
     clearTweens(); firing = 0; G.state = 'map'; castle.mode = null; hideOverlays(); $('#btn-outside').hidden = true; $('#room-nav').hidden = true;
     Object.values(ENEMIES).forEach(e => e.group.visible = false); showWorld('map'); Music.play('map');
     $('#hud').classList.add('quiet'); $('#hud').classList.add('nomap'); $('#castle-ui').hidden = true; $('#map-ui').hidden = false;
@@ -1611,7 +1627,10 @@
   function greetInside(o) { const kind = o.userData.kind; const lines = kind === 'prisoner' ? ['Lemme out! Me be good!', 'Grr... stupid bars.', 'Got any cheese, {n}?'] : kind === 'cook' ? ['Stew is almost ready, {n}!', 'Do not touch the pie, sire.'] : kind === 'maid' ? ['The beds are made, {n}.', 'Welcome home, sire!'] : ['Hail, {n}! All quiet in the keep.', 'Nobody gets past me, {n}.']; bubble(pickFresh(lines, 'g' + kind), kind === 'prisoner' ? 'goblin' : kind === 'guard' ? 'guard' : 'villager'); SFX.hello(); const y0 = kind === 'prisoner' ? GROUND - 1 : GROUND; tween(0.6, k => { o.position.y = y0 + Math.sin(k * Math.PI) * 0.35; }); }
   canvas.addEventListener('pointerup', e => { if (!downAt || G.state !== 'inside') return; if (Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 8) return; ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); const targets = [...INSIDE.hot, ...Object.values(INSIDE.people)]; if (INSIDE.captive) targets.push(INSIDE.captive); const hit = ray.intersectObjects(targets, true)[0]; if (!hit) return; let o = hit.object; while (o && !(o.userData.room || o.userData.action || o.userData.kind || o === INSIDE.captive)) o = o.parent; if (!o) return; if (o === INSIDE.captive) doRoom('dungeon'); else if (o.userData.action) doRoom(o.userData.action); else if (o.userData.room) doRoom(o.userData.room); else greetInside(o); });
   $('#btn-outside').addEventListener('click', () => { $('#btn-outside').hidden = true; $('#room-nav').hidden = true; enterCastle(false); });
-  $('#btn-map').addEventListener('click', showMap); $('#btn-death-map').addEventListener('click', showMap); $('#btn-win-map').addEventListener('click', showMap); $('#btn-castle-map').addEventListener('click', showMap);
+  let leaveArmed = 0;
+  $('#btn-map').addEventListener('click', () => { const st = G.state; if (st === 'castle' && castle.mode && castle.mode !== 'pick') return; if (st === 'inside' && INSIDE.busy) return; if (['question', 'block', 'hit'].includes(st) && Date.now() - leaveArmed > 2500) { leaveArmed = Date.now(); const b = $('#btn-map'); const old = b.textContent; b.textContent = 'TAP AGAIN TO LEAVE'; setTimeout(() => { b.textContent = old; }, 2500); return; } showMap(); });
+  $('#btn-hear').addEventListener('click', () => { audioOn(); if (G.q && G.q.visual) say(G.q.text, 'narrator', true); });
+  $('#btn-death-map').addEventListener('click', showMap); $('#btn-win-map').addEventListener('click', showMap); $('#btn-castle-map').addEventListener('click', showMap);
   $('#btn-map-castle').addEventListener('click', () => { if (G.gold === 0 && G.gems === 0 && castle.built.length === 0 && !G.pendingLoot) G.pendingLoot = { gold: 300, gems: 2 }; enterCastle(true); });
   $('#btn-map-look').addEventListener('click', () => { $('#ov-start').hidden = false; openBuilder(P ? P.look : defaultLook(), P ? P.name : ''); });
   $('#btn-map-switch').addEventListener('click', () => { $('#ov-start').hidden = false; drawProfiles(); showStep('profiles'); });
@@ -1621,7 +1640,7 @@
   function farmIncome() { const farms = castle.people.filter(p => p === 'farm').length; if (!farms || !castle.lastIncome) { castle.lastIncome = Date.now(); return 0; } const mins = Math.min(60, (Date.now() - castle.lastIncome) / 60000); castle.lastIncome = Date.now(); return Math.round(farms * 12 * mins); }
   function enterCastle(withChest) {
     clearTweens(); firing = 0; G.state = 'castle'; knight.scale.setScalar(1); knight.rotation.y = 0; castle.mode = 'arrive'; hideOverlays(); $('#btn-outside').hidden = true; $('#room-nav').hidden = true; $('#castle-board').classList.remove('collapsed'); $('#btn-board').textContent = 'HIDE BOARD';
-    Object.values(ENEMIES).forEach(e => e.group.visible = false); showWorld('castle'); Music.play('castle');
+    Object.values(ENEMIES).forEach(e => e.group.visible = false); lootChest.g.visible = false; showWorld('castle'); Music.play('castle');
     $('#hud').classList.add('quiet'); $('#hud').classList.remove('nomap'); $('#map-ui').hidden = true; cui.root.hidden = false; cui.cards.hidden = true; cui.actions.hidden = true;
     chest.open = false; chest.lid.rotation.x = 0; chest.light.intensity = 0; chest.g.visible = !!(withChest && G.pendingLoot);
     knight.position.set(-9, GROUND, 8); K.last.copy(knight.position); resetKnightPose();
@@ -1631,7 +1650,7 @@
     if (chest.g.visible) wait(1.8, openChest); else wait(1.4, showBoard);
   }
   function openChest() {
-    castle.mode = 'chest'; SFX.chime(); const loot = G.pendingLoot || { gold: 0, gems: 0 }; G.pendingLoot = null;
+    castle.mode = 'chest'; SFX.chime(); const loot = G.pendingLoot || { gold: 0, gems: 0 }; G.pendingLoot = null; if (P) P.pendingLoot = null;
     tween(0.6, k => { chest.lid.rotation.x = -1.8 * k; chest.light.intensity = 2.2 * k; }, easeOut, () => { chest.open = true; chest.g.getWorldPosition(tmp); tmp.y += 1.4; earn(loot.gold, loot.gems, tmp.clone()); for (let i = 0; i < 4; i++) setTimeout(() => emit(tmp, new THREE.Vector3(0, 5, 0), 4, 1.1, ['ffd23f', 'ffd23f', '34d399', 'ffffff'], 7, 14, 0.7), i * 120); });
     cui.hint.textContent = `The chest pays out: ${loot.gold} gold and ${loot.gems} jewels!`; wait(2.4, showBoard);
   }
@@ -1646,7 +1665,7 @@
       const cost = `<span class="cost"><i style="background:#ffd23f"></i>${p.gold}${p.gems ? ` <i style="background:#34d399"></i>${p.gems}` : ''}</span>`;
       return `<button type="button" class="bp" data-kind="${k}" ${can ? '' : 'disabled'} aria-disabled="${!can}">${BP_ICON[k]}<span>${p.name}${p.people ? ` x${count}` : ''}</span>${cost}<small>${built ? 'BUILT' : full ? 'all hired' : can ? p.sub : 'not enough treasure'}</small></button>`;
     }).join('');
-    cui.cards.hidden = false; cui.actions.hidden = false;
+    cui.cards.hidden = false; cui.actions.hidden = false; $('#btn-inside').hidden = !castle.built.some(b => b.kind === 'keep');
     cui.cards.querySelectorAll('.bp:not([disabled])').forEach(b => b.addEventListener('click', () => buyPiece(b.dataset.kind)));
   }
   function spend(kind) { const p = PIECES[kind]; G.gold -= p.gold; G.gems -= p.gems; G.shownGold = G.gold; G.shownGems = G.gems; drawHud(); drawTreasury(); SFX.coin(3); saveDB(); }
@@ -1667,17 +1686,18 @@
   /* ---------- profiles, the builder, the parent view ---------- */
   const DB = { list: [], current: null, locks: true }; let P = null; // a fresh device starts with the real level locks on
   function newProfile(name, look) { return { id: 'k' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), name, look, mode: 'addsub', levels: { goblin: 'open' }, gold: 0, gems: 0, built: [], people: [], stats: { answered: 0, correct: 0, timeSum: 0, wins: 0, deaths: 0, missed: {} }, created: Date.now(), lastPlayed: Date.now() }; }
-  function loadDB() { try { const j = JSON.parse(localStorage.getItem('lc-profiles-v2') || 'null'); if (j && Array.isArray(j.list)) { DB.list = j.list; DB.current = j.current; DB.locks = j.locks == null ? true : !!j.locks; DB.voices = j.voices || {}; } } catch (e) {} }
+  function loadDB() { try { const j = JSON.parse(localStorage.getItem('lc-profiles-v2') || 'null'); if (j && Array.isArray(j.list)) { DB.list = j.list.filter(x => x && typeof x === 'object' && x.id && typeof x.name === 'string'); DB.current = j.current; DB.locks = j.locks == null ? true : !!j.locks; DB.voices = j.voices || {}; } } catch (e) {} }
   function saveDB() { try { if (P) { P.gold = G.gold; P.gems = G.gems; P.built = castle.built; P.people = castle.people; P.lastIncome = castle.lastIncome; P.lastPlayed = Date.now(); } localStorage.setItem('lc-profiles-v2', JSON.stringify(DB)); } catch (e) {} }
   function useProfile(pr) {
-    P = pr; DB.current = pr.id; G.name = pr.name.toUpperCase(); G.gold = pr.gold || 0; G.gems = pr.gems || 0; G.mode = pr.mode || 'addsub'; castle.lastIncome = pr.lastIncome || 0;
+    pr.stats = Object.assign({ answered: 0, correct: 0, timeSum: 0, wins: 0, deaths: 0, missed: {} }, pr.stats || {}); pr.levels = pr.levels || { goblin: 'open' }; pr.look = pr.look || defaultLook(); pr.built = Array.isArray(pr.built) ? pr.built : []; pr.people = Array.isArray(pr.people) ? pr.people : [];
+    P = pr; DB.current = pr.id; G.pendingLoot = pr.pendingLoot || null; G.name = pr.name.toUpperCase(); G.gold = pr.gold || 0; G.gems = pr.gems || 0; G.mode = pr.mode || 'addsub'; castle.lastIncome = pr.lastIncome || 0;
     while (castleGroup.children.length) castleGroup.remove(castleGroup.children[0]); while (peopleGroup.children.length) peopleGroup.remove(peopleGroup.children[0]);
     castle.built = (pr.built || []).filter(b => SLOTS[b.kind]); castle.people = []; (pr.people || []).forEach(k => { if (POSTS[k]) placePerson(k, false); }); castle.built.forEach(b => placePiece(b.kind, false));
     G.shownGold = G.gold; G.shownGems = G.gems; applyLook(pr.look); drawHud(); saveDB();
   }
   function recordAnswer(correct, elapsed, q) { if (!P) return; const st = P.stats; st.answered++; if (correct) st.correct++; st.timeSum += Math.min(elapsed, 30); if (!correct) { const f = q.visual ? q.key : `${q.a} ${q.op} ${q.b}`; st.missed[f] = (st.missed[f] || 0) + 1; } saveDB(); }
   const steps = { profiles: $('#step-profiles'), builder: $('#step-builder') };
-  function showStep(name) { knight.scale.setScalar(1); Object.entries(steps).forEach(([k, e]) => e.hidden = k !== name); $('#ov-start').classList.toggle('clear', name === 'builder'); $('#ov-start').hidden = false; $('#map-ui').hidden = true; cui.root.hidden = true; $('#hud').classList.add('quiet'); $('#hud').classList.add('nomap'); G.state = name === 'builder' ? 'builder' : 'start'; if (name === 'builder') { showWorld(currentLevel); Object.values(ENEMIES).forEach(e => e.group.visible = false); knight.position.set(0.4, GROUND, 0); K.last.copy(knight.position); resetKnightPose(); } }
+  function showStep(name) { knight.scale.setScalar(1); requestAnimationFrame(() => { const card = $('#start-form'); const h = $('#scroll-hint'); if (h) h.hidden = name !== 'builder' || card.scrollHeight <= card.clientHeight + 8; }); Object.entries(steps).forEach(([k, e]) => e.hidden = k !== name); $('#ov-start').classList.toggle('clear', name === 'builder'); $('#ov-start').hidden = false; $('#map-ui').hidden = true; cui.root.hidden = true; $('#hud').classList.add('quiet'); $('#hud').classList.add('nomap'); G.state = name === 'builder' ? 'builder' : 'start'; if (name === 'builder') { showWorld(currentLevel); Object.values(ENEMIES).forEach(e => e.group.visible = false); knight.position.set(0.4, GROUND, 0); K.last.copy(knight.position); resetKnightPose(); } }
   function drawProfiles() {
     const wrap = $('#profiles');
     wrap.innerHTML = DB.list.map(pr => `<button type="button" class="profile" data-id="${pr.id}"><span class="face" style="background:${pr.look && pr.look.skin || '#f1c27d'}; border-top: 10px solid ${pr.look && pr.look.haircolor || '#a5743a'}"></span><span>${pr.name.toUpperCase()}</span><small>${Object.values(pr.levels || {}).filter(v => v === 'done').length}/5 lands · ${(pr.built || []).length}/5 castle</small><small>${(MODES[pr.mode] || MODES.addsub).name}</small></button>`).join('') + `<button type="button" class="profile new" id="btn-new-knight"><span class="face" style="background:#fff; display:grid; place-items:center; font-size:26px">+</span><span>NEW KNIGHT</span><small>build your own</small></button>`;
@@ -1689,7 +1709,7 @@
   function openBuilder(look, name) { const lm = document.querySelector(`input[name=look-lesson][value="${P ? (P.mode || 'addsub') : 'addsub'}"]`); if (lm) lm.checked = true; editingLook = Object.assign(defaultLook(), look || {}); Object.entries(editingLook).forEach(([k, v]) => { const inp = document.querySelector(`input[name=look-${k}][value="${v}"]`); if (inp) inp.checked = true; }); $('#knight-name').value = name || ''; applyLook(editingLook); showStep('builder'); setTimeout(() => $('#knight-name').focus(), 50); }
   $('#btn-save-knight').addEventListener('click', () => { audioOn(); readOpts(); const name = $('#knight-name').value.trim() || 'Sir Knight'; const lessonPick = (document.querySelector('input[name=look-lesson]:checked') || {}).value || 'addsub'; if (P) { P.name = name; P.look = editingLook; P.mode = lessonPick; } else { P = newProfile(name, editingLook); P.mode = lessonPick; DB.list.push(P); } useProfile(P); showMap(); });
   $('#btn-back-profiles').addEventListener('click', () => { if (P) applyLook(P.look); drawProfiles(); showStep('profiles'); });
-  $('#btn-parents').addEventListener('click', () => {
+  $('#btn-parents').addEventListener('click', () => { const pa = Math.floor(Math.random() * 6) + 6, pb = Math.floor(Math.random() * 6) + 6; const pans = window.prompt('Parents only. What is ' + pa + ' x ' + pb + '?'); if (pans == null || +pans !== pa * pb) return; $('#backup-code').value = localStorage.getItem('lc-profiles-v2') || '';
     const rows = DB.list.map(pr => { const st = pr.stats || { answered: 0, correct: 0, timeSum: 0, missed: {} }; const acc = st.answered ? Math.round(st.correct / st.answered * 100) + '%' : '–'; const avg = st.answered ? (st.timeSum / st.answered).toFixed(1) + 's' : '–'; const missed = Object.entries(st.missed || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([f, n]) => `${f} (${n})`).join(', ') || 'none yet'; const sel = `<select data-id="${pr.id}" style="font-size:15px;padding:4px">${Object.entries(MODES).map(([k, m]) => `<option value="${k}" ${pr.mode === k ? 'selected' : ''}>${m.name}</option>`).join('')}</select>`; return `<tr><td><b>${pr.name}</b></td><td>${sel}</td><td>${st.answered}</td><td>${acc}</td><td>${avg}</td><td>${Object.values(pr.levels || {}).filter(v => v === 'done').length}/5</td><td>${(pr.built || []).length}/5</td><td>${missed}</td></tr>`; }).join('');
     $('#parent-table').innerHTML = `<table class="stats"><thead><tr><th>CHILD</th><th>LESSON</th><th>ANSWERED</th><th>ACCURACY</th><th>AVG TIME</th><th>LANDS</th><th>CASTLE</th><th>MISSED MOST</th></tr></thead><tbody>${rows || '<tr><td colspan="8">No knights yet.</td></tr>'}</tbody></table>`;
     $('#parent-table').querySelectorAll('select').forEach(s => s.addEventListener('change', () => { const pr = DB.list.find(x => x.id === s.dataset.id); if (pr) { pr.mode = s.value; if (P === pr) G.mode = s.value; saveDB(); drawProfiles(); } }));
@@ -1703,6 +1723,8 @@
   function drawLockBtn() { $('#btn-unlock').textContent = DB.locks ? 'LEVEL LOCKS: ON (real progression)' : 'LEVEL LOCKS: OFF (review mode)'; }
   $('#btn-unlock').addEventListener('click', () => { DB.locks = !DB.locks; saveDB(); drawLockBtn(); if (P && G.state === 'map') { $('#ov-parent').hidden = true; showMap(); } });
   $('#btn-parent-close').addEventListener('click', () => { $('#ov-parent').hidden = true; });
+  $('#btn-backup-copy').addEventListener('click', () => { const ta = $('#backup-code'); ta.select(); try { navigator.clipboard.writeText(ta.value); } catch (e) {} $('#backup-msg').textContent = 'Copied. Paste it into the same box on the other device and tap RESTORE.'; });
+  $('#btn-backup-restore').addEventListener('click', () => { try { const j = JSON.parse($('#backup-code').value); if (!j || !Array.isArray(j.list)) throw new Error('bad'); localStorage.setItem('lc-profiles-v2', JSON.stringify(j)); location.reload(); } catch (e) { $('#backup-msg').textContent = 'That code is not a Learning Castle backup.'; } });
   function readOpts() { G.music = $('#opt-music').checked; G.voices = $('#opt-voices').checked; }
   $('#btn-sound').addEventListener('click', () => { G.muted = !G.muted; $('#btn-sound').textContent = G.muted ? 'SOUND: OFF' : 'SOUND: ON'; $('#btn-sound').setAttribute('aria-pressed', String(G.muted)); if (G.muted && 'speechSynthesis' in window) window.speechSynthesis.cancel(); });
   $('#start-form').addEventListener('submit', e => e.preventDefault());
