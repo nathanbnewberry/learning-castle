@@ -7,6 +7,9 @@
   body { margin: 0; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: var(--sea); color: var(--cream); font-family: 'Pixelify Sans', 'Trebuchet MS', sans-serif; overflow: hidden; }
   #app { position: fixed; inset: 0; }
   #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  /* iPad Safari ignores user-scalable=no: stop double-tap and pinch from zooming the page */
+  html, body, #app, button, input, label, a { touch-action: manipulation; }
+  .overlay { touch-action: pan-x pan-y; }
   .px { font-family: 'Press Start 2P', 'Courier New', monospace; }
   button { font-family: inherit; }
   .hbtn { pointer-events: auto; appearance: none; cursor: pointer; min-height: 42px; padding: 0 14px; font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--cream); background: var(--wood); border: 3px solid var(--ink); box-shadow: 4px 4px 0 rgba(0,0,0,.45); }
@@ -222,6 +225,14 @@
     </div>
   </div>
 </div>
+<script>
+  // iPad: block page pinch-zoom and double-tap zoom so the game view never zooms in
+  (function () {
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+    document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+    document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+  })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function () {
@@ -1261,7 +1272,7 @@
   window.__dbg = { enterShip, leaveShip, startDive, DEEP, fireball, puff, smoke, erupt, startDefense, enterHouse, leaveHouse, openBuild, goIsland, ISL, BRIT, scene, camera, get OUR() { return OUR; }, get ENEMY() { return ENEMY; } };
 
   /* ---------- main loop ---------- */
-  function resize() { const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  function resize() { const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; /* keep the side-to-side view on tall/portrait screens so it never looks zoomed in */ const a = w / h, base = 42, ref = 4 / 3; camera.fov = a >= ref ? base : Math.min(80, 2 * Math.atan(Math.tan(base * Math.PI / 360) * ref / a) * 180 / Math.PI); camera.updateProjectionMatrix(); }
   window.addEventListener('resize', resize); resize();
   let last = performance.now();
   function frame(now) {
