@@ -785,7 +785,7 @@
     [[-6.8, -3.6, 0.85], [7.0, -3.0, 0.9], [-4.8, -7.6, 0.7]].forEach(([x, z, s]) => { const e = buildTroll(); const g = e.group; g.scale.setScalar(s); g.position.set(x, GROUND, z); g.rotation.y = faceFight(x, z); if (e.actor.blob) e.actor.blob.visible = false; WORLDS.troll.add(g); spectators.push({ g, actor: e.actor, ph: Math.random() * 10, kind: 'troll', base: g.rotation.y }); });
   }
   // the sidelines cheer: goblins hop and wave, trolls pump their clubs, stomp and roar-nod at the fight
-  function stepSpectators(t) { spectators.forEach(s => { const A = s.actor; if (s.step) { s.step(t); return; } if (s.kind === 'goblin') { s.g.position.y = GROUND + Math.abs(Math.sin(t * 3 + s.ph)) * 0.25; A.armR.rotation.z = A.armRBase - 1.4 + Math.sin(t * 6 + s.ph) * 0.6; A.head.rotation.z = Math.sin(t * 3 + s.ph) * 0.2; s.g.rotation.y = s.base + Math.sin(t * 0.9 + s.ph) * 0.3; } else { A.torso.rotation.z = 0.28 + Math.sin(t * 1.5 + s.ph) * 0.08; A.armR.rotation.z = A.armRBase - 0.9 + Math.sin(t * 2.6 + s.ph) * 0.8; A.armL.rotation.z = A.armLBase + Math.sin(t * 2.6 + s.ph + 1) * 0.35; A.head.rotation.y = Math.sin(t * 0.7 + s.ph) * 0.3; const hop = Math.sin(t * 1.3 + s.ph); s.g.position.y = GROUND + (hop > 0.85 ? (hop - 0.85) * 3 : 0); s.g.rotation.y = s.base + Math.sin(t * 0.5 + s.ph) * 0.25; } }); }
+  function stepSpectators(t) { spectators.forEach(s => { const A = s.actor; if (s.busy) return; if (s.step) { s.step(t); return; } if (s.kind === 'goblin') { s.g.position.y = GROUND + Math.abs(Math.sin(t * 3 + s.ph)) * 0.25; A.armR.rotation.z = A.armRBase - 1.4 + Math.sin(t * 6 + s.ph) * 0.6; A.head.rotation.z = Math.sin(t * 3 + s.ph) * 0.2; s.g.rotation.y = s.base + Math.sin(t * 0.9 + s.ph) * 0.3; } else { A.torso.rotation.z = 0.28 + Math.sin(t * 1.5 + s.ph) * 0.08; A.armR.rotation.z = A.armRBase - 0.9 + Math.sin(t * 2.6 + s.ph) * 0.8; A.armL.rotation.z = A.armLBase + Math.sin(t * 2.6 + s.ph + 1) * 0.35; A.head.rotation.y = Math.sin(t * 0.7 + s.ph) * 0.3; const hop = Math.sin(t * 1.3 + s.ph); s.g.position.y = GROUND + (hop > 0.85 ? (hop - 0.85) * 3 : 0); s.g.rotation.y = s.base + Math.sin(t * 0.5 + s.ph) * 0.25; } }); }
 
   /* ---------- inside the keep: throne room, bedroom, kitchen and a dungeon. Low walls so every room can be seen ---------- */
   const INSIDE = { rooms: {}, hot: [], people: {}, view: { look: [0, 2.2, -2.5], dist: 9.5, h: 3.2 }, cells: [[-4.2, 8.4], [-1.4, 8.6], [1.4, 8.6], [4.2, 8.4]], bossSpot: (i) => [-4 + (i % 5) * 2, 5 + Math.floor(i / 5) * 1.7], jailBuilt: {}, jailedList: [], busy: false };
@@ -1834,6 +1834,91 @@
     else { text = `Share ${q.a} into groups of ${q.b}. That makes ${q.ans} groups.`; blocks = Array.from({ length: q.ans }, () => B(q.b) + '<span class="gap"></span>').join(''); }
     return { eq, text, blocks };
   }
+  /* ---------- the knight's friends + the sideline gang ---------- */
+  // two ally knights stand with the hero in every fight. The boss's friends on the sidelines join in:
+  // a wrong answer lets one sneak in and whack the knight (no extra heart lost), and a right answer
+  // sends one charging in that an ally knight knocks flying.
+  const ALLY_LOOKS = [{ armor: 0x4f7fe0, dark: 0x2b4fa3, plume: 0xf5c542, cape: 0x1d4ed8 }, { armor: 0xf5c542, dark: 0xb7791f, plume: 0xd62828, cape: 0x15803d }];
+  const ALLY_OFFS = [[-0.9, -2.4], [-0.6, 2.2]];
+  const allyGroup = new THREE.Group(); allyGroup.visible = false; scene.add(allyGroup);
+  function buildAlly(L) {
+    const g = new THREE.Group(); allyGroup.add(g); g.scale.setScalar(0.85);
+    const A = { root: g, face: 1, stride: 4.5, swing: 0.8 }; A.blob = blob(g, 1.3);
+    A.body = new THREE.Group(); g.add(A.body);
+    const M = { metal: 0.75, rough: 0.32 };
+    A.legL = new THREE.Group(); A.legL.position.set(0, 0.85, 0.17); A.body.add(A.legL);
+    A.legR = new THREE.Group(); A.legR.position.set(0, 0.85, -0.17); A.body.add(A.legR);
+    [A.legL, A.legR].forEach(l => { box(l, 0.3, 0.45, 0.3, 0, -0.22, 0, L.dark, M); const shin = new THREE.Group(); shin.position.set(0, -0.44, 0); l.add(shin); l.userData.shin = shin; box(shin, 0.27, 0.36, 0.27, 0, -0.18, 0, 0x3b4252); box(shin, 0.32, 0.12, 0.34, 0.03, -0.36, 0, 0x1f2430); });
+    A.upper = new THREE.Group(); A.upper.position.y = 0.85; A.body.add(A.upper);
+    box(A.upper, 0.5, 0.72, 0.62, 0, 0.4, 0, L.armor, M); box(A.upper, 0.52, 0.14, 0.64, 0, 0.06, 0, 0x5b3a1a);
+    const cape = box(A.upper, 0.08, 0.95, 0.56, -0.3, 0.25, 0, L.cape); A.cape = cape;
+    A.head = new THREE.Group(); A.head.position.y = 0.98; A.upper.add(A.head);
+    box(A.head, 0.5, 0.5, 0.5, 0, 0.22, 0, L.armor, M); box(A.head, 0.06, 0.08, 0.36, 0.26, 0.24, 0, 0x111827); cone(A.head, 0.12, 0.42, -0.05, 0.62, 0, L.plume);
+    A.armR = new THREE.Group(); A.armR.position.set(0, 0.68, -0.4); A.upper.add(A.armR);
+    box(A.armR, 0.2, 0.6, 0.2, 0, -0.28, 0, L.armor, M);
+    const sw = new THREE.Group(); sw.position.set(0, -0.6, 0); A.armR.add(sw); box(sw, 0.1, 0.1, 0.34, 0, 0, 0, 0xf5b301, M); box(sw, 0.9, 0.1, 0.06, 0.5, 0, 0, 0xe5edf7, { metal: 0.9, rough: 0.2 }); A.tip = new THREE.Object3D(); A.tip.position.set(0.95, 0, 0); sw.add(A.tip);
+    A.armL = new THREE.Group(); A.armL.position.set(0, 0.68, 0.4); A.upper.add(A.armL);
+    box(A.armL, 0.2, 0.6, 0.2, 0, -0.28, 0, L.armor, M); box(A.armL, 0.1, 0.72, 0.6, 0.18, -0.42, 0.06, L.cape); box(A.armL, 0.11, 0.26, 0.24, 0.2, -0.42, 0.06, L.plume, M);
+    A.armRBase = 0.55; A.armLBase = 0.35; A.armR.rotation.z = A.armRBase; A.armL.rotation.z = A.armLBase;
+    walker(A); A.busy = false; A.ph = Math.random() * 10; return A;
+  }
+  const ALLIES = ALLY_LOOKS.map(buildAlly);
+  function allyHome(i, out) { const base = E && E.steps ? KMARK0 : KMARK; return out.set(base.x + ALLY_OFFS[i][0], E && E.steps ? GROUND : KGY, base.z + ALLY_OFFS[i][1]); }
+  const _h = new THREE.Vector3(), _w = new THREE.Vector3(), _w2 = new THREE.Vector3();
+  function faceKnightTo(A, x, z) { const p = A.root.position; A.root.rotation.y = Math.atan2(-(z - p.z), x - p.x); }
+  function placeAllies() { ALLIES.forEach((A, i) => { A.busy = false; allyHome(i, _h); A.root.position.copy(_h); A.last.copy(_h); A.root.rotation.set(0, 0, 0); A.upper.rotation.set(0, 0, 0); A.armR.rotation.set(0, 0, A.armRBase); A.armL.rotation.set(0, 0, A.armLBase); }); }
+  function stepAllies(t, dt) {
+    ALLIES.forEach((A, i) => {
+      stepWalk(A, dt);
+      if (A.busy) return;
+      allyHome(i, _h); const p = A.root.position; p.x += (_h.x - p.x) * Math.min(1, dt * 3); p.z += (_h.z - p.z) * Math.min(1, dt * 3); p.y += (_h.y - p.y) * Math.min(1, dt * 5);
+      A.root.rotation.y += (Math.atan2(-(E.group.position.z - p.z), E.group.position.x - p.x) * 0.6 - A.root.rotation.y) * Math.min(1, dt * 4);
+      A.armR.rotation.z = A.armRBase + Math.sin(t * 1.6 + A.ph) * 0.12; A.armL.rotation.z = A.armLBase + 0.4 + Math.sin(t * 1.3 + A.ph) * 0.08;
+      A.upper.rotation.z = Math.sin(t * 2.1 + A.ph) * 0.03;
+    });
+  }
+  // a quick cheer when the hero blocks
+  function alliesCheer() { ALLIES.forEach((A, i) => { if (A.busy) return; wait(i * 0.12, () => { if (A.busy) return; tween(0.5, k => { const s = Math.sin(k * Math.PI); A.armR.rotation.z = A.armRBase + 2.2 * s; A.root.position.y = (E.steps ? GROUND : KGY) + 0.35 * s; }, linear); }); }); }
+  function allySwing(A, done) { seq([[0.14, k => { A.armR.rotation.z = A.armRBase + (2.7 - A.armRBase) * k; }, easeOut], [0.1, k => { A.armR.rotation.z = 2.7 - 2.4 * k; A.upper.rotation.z = 0.35 * k; }, easeIn], () => { if (done) done(); }, [0.3, k => { A.armR.rotation.z = 0.3 + (A.armRBase - 0.3) * k; A.upper.rotation.z = 0.35 * (1 - k); }, easeOut]]); }
+  function allyRun(A, x, z, dur, done) { A.busy = true; const p = A.root.position, fx = p.x, fz = p.z; faceKnightTo(A, x, z); tween(dur, k => { p.x = fx + (x - fx) * k; p.z = fz + (z - fz) * k; }, easeInOut, done); }
+  function allyPounce(A, x, z, dur, done) { A.busy = true; const p = A.root.position, fx = p.x, fz = p.z, y0 = p.y; faceKnightTo(A, x, z); SFX.swing();
+    seq([[0.12, k => { p.y = y0 - 0.15 * k; A.armR.rotation.z = A.armRBase + (2.9 - A.armRBase) * k; }, easeOut],
+      [dur, k => { p.x = fx + (x - fx) * k; p.z = fz + (z - fz) * k; p.y = y0 + Math.sin(k * Math.PI) * 2.0; A.legL.rotation.z = -0.9 * Math.sin(k * Math.PI); A.legR.rotation.z = 0.7 * Math.sin(k * Math.PI); A.upper.rotation.z = 0.4 * k; }, linear],
+      [0.08, k => { A.armR.rotation.z = 2.9 - 2.6 * k; A.upper.rotation.z = 0.4 + 0.2 * k; }, easeIn],
+      () => { p.y = y0; A.legL.rotation.z = 0; A.legR.rotation.z = 0; SFX.stomp(); A.tip.getWorldPosition(tmp); tmp.y = y0 + 0.1; dust(tmp); dust(tmp); shake(0.3); if (done) done(); },
+      [0.3, k => { A.armR.rotation.z = 0.3 + (A.armRBase - 0.3) * k; A.upper.rotation.z = 0.6 * (1 - k); }, easeOut]]); }
+  function allyBack(A) { wait(0.4, () => { const i = ALLIES.indexOf(A); allyHome(i, _h); allyRun(A, _h.x, _h.z, 0.7, () => { A.busy = false; }); }); }
+
+  // the sideline gang: only the ones standing in this land, closest first
+  function gangHere() { const w = WORLDS[currentLevel]; return spectators.filter(s => !s.busy && s.g.parent === w && s.g.visible !== false); }
+  function pickGanger() { const list = gangHere(); if (!list.length) return null; knight.getWorldPosition(_w); list.forEach(s => { s.g.getWorldPosition(_w2); s.d = _w2.distanceTo(_w) + Math.random() * 3; }); list.sort((a, b) => a.d - b.d); return list[0].d < 22 ? list[0] : null; }
+  function homeOf(s) { if (!s.home) s.home = { p: s.g.position.clone(), ry: s.g.rotation.y, rz: s.g.rotation.z }; return s.home; }
+  // move a sideline monster along an arc to a WORLD point (they live inside their land's group)
+  function gangTo(s, wx, wy, wz, dur, hop, done) { const par = s.g.parent; const from = s.g.position.clone(); const to = par.worldToLocal(new THREE.Vector3(wx, wy, wz)); s.g.rotation.y = -Math.atan2(from.z - to.z, from.x - to.x);
+    tween(dur, k => { s.g.position.lerpVectors(from, to, k); s.g.position.y += Math.sin(k * Math.PI) * hop + Math.abs(Math.sin(k * Math.PI * 5)) * 0.15; s.g.rotation.z = 0.25 * Math.sin(k * Math.PI); }, easeInOut, done); }
+  function gangHome(s, dur, flip) { const h = homeOf(s); const from = s.g.position.clone(); tween(dur, k => { s.g.position.lerpVectors(from, h.p, k); s.g.position.y += Math.sin(k * Math.PI) * (flip ? 2.2 : 0.6); s.g.rotation.z = flip ? -Math.PI * 2 * Math.min(1, k * 1.4) : 0; }, easeOut, () => { s.g.position.copy(h.p); s.g.rotation.y = h.ry; s.g.rotation.z = h.rz; s.busy = false; }); }
+  // WRONG answer: a monster from the sidelines sneaks in and whacks the knight too, then an ally chases it off
+  function sneakAttack() { if (E.steps || E.noBoss) return; const s = pickGanger(); if (!s) return; s.busy = true; homeOf(s); s.mats = s.mats || matsOf(s.g);
+    knight.getWorldPosition(_w); const side = s.g.getWorldPosition(_w2).z > _w.z ? 1 : -1; const tx = _w.x - 0.4, tz = _w.z + side * 1.1;
+    SFX.growl(); gangTo(s, tx, KGY, tz, 0.65, 0.9, () => {
+      seq([[0.12, k => { s.g.rotation.z = 0.25 + 0.5 * k; }, easeIn], () => { SFX.hit(); flashMats(knightMats, 0xff2020, 0.18); knight.getWorldPosition(tmp); tmp.y += 1.2; sparks(tmp, 10); shake(0.25); floatText('SNEAK ATTACK!', tmp, ''); },
+        [0.15, k => { s.g.rotation.z = 0.75 - 0.75 * k; }, easeOut]], () => {
+        const A = ALLIES.slice().sort((a, b) => a.root.position.distanceTo(s.g.position) - b.root.position.distanceTo(s.g.position)).find(a => !a.busy);
+        if (A) { allyPounce(A, tx - 0.6, tz + side * 0.6, 0.45, (() => { SFX.clang(); flashMats(s.mats, 0xff3b3b, 0.14); s.g.getWorldPosition(tmp); tmp.y += 1; sparks(tmp, 8); gangHome(s, 0.8, true); allyBack(A); })); }
+        else gangHome(s, 0.8, false); }); }); }
+  // RIGHT answer: every free ally knight takes on its own monster from the sidelines
+  function allyIntercept() { if (E.steps || E.noBoss) return; ALLIES.forEach((A, i) => wait(i * 0.3, () => allyFight(A))); }
+  function allyFight(A) { if (A.busy || G.state === 'won' || G.state === 'dead') return; const s = pickGanger(); if (!s) return; s.busy = true; homeOf(s); s.mats = s.mats || matsOf(s.g);
+    knight.getWorldPosition(_w); s.g.getWorldPosition(_w2); const mx = _w2.x + (_w.x - _w2.x) * 0.55, mz = _w2.z + (_w.z - _w2.z) * 0.55;
+    SFX.growl(); gangTo(s, mx, KGY, mz, 0.7, 0.8, null);
+    const dx = _w2.x - mx, dz = _w2.z - mz, dl = Math.hypot(dx, dz) || 1; const ax = mx - dx / dl * 1.3, az = mz - dz / dl * 1.3;
+    allyPounce(A, ax, az, 0.5, (() => { SFX.clang(); SFX.hit(); flashMats(s.mats, 0xff3b3b, 0.14); s.g.getWorldPosition(tmp); tmp.y += 1; sparks(tmp, 14); shake(0.2); floatText('YOUR KNIGHT GOT HIM!', tmp, ''); gangHome(s, 0.9, true); allyBack(A); })); }
+  // reset everything when the fight restarts or we leave (tweens are cleared, so park everyone home)
+  function resetGang() { spectators.forEach(s => { if (s.home) { s.g.position.copy(s.home.p); s.g.rotation.y = s.home.ry; s.g.rotation.z = s.home.rz; } s.busy = false; }); placeAllies(); }
+  // the lion's pride: young lions prowl the edge of the savanna and join in like the goblins do
+  (function addLionPride() { if (!WORLDS.lion) return;
+    [[-7.2, -3.8, 0.42], [7.8, -3.6, 0.45], [1.0, -7.5, 0.4], [-6.0, -7.0, 0.38]].forEach(([x, z, sc]) => { const e = buildLion(); const g = e.group; const L = e.actor; const ph = Math.random() * 10; g.scale.setScalar(sc); g.position.set(x, GROUND, z); if (L.blob) L.blob.visible = false; WORLDS.lion.add(g); const base = -Math.atan2(z - 0.2, x - 1.0);
+      spectators.push({ g, actor: L, ph, kind: 'custom', step: (t) => { g.rotation.y = base + Math.sin(t * 0.6 + ph) * 0.25; L.tail.rotation.y = Math.sin(t * 3 + ph) * 0.6; L.head.rotation.z = Math.sin(t * 1.4 + ph) * 0.15; L.head.rotation.y = Math.sin(t * 0.9 + ph) * 0.3; const c = Math.max(0, Math.sin(t * 0.8 + ph)); L.body.position.y = -0.25 * c; } }); }); })();
 
   /* ---------- fight flow ---------- */
   let skipRender = false; // the debug harness fast-forwards without drawing
@@ -1870,10 +1955,10 @@
     if (G.state !== 'question') return;
     const elapsed = (performance.now() - G.askedAt) / 1000; const ok = v === G.q.ans;
     lockAnswers(btn); setTimeout(() => el.qpanel.classList.add('hide'), 300); recordAnswer(ok, elapsed, G.q);
-    if (ok) { G.state = 'block'; G.streak++; drawHud(); exchange(true, elapsed, null); }
-    else { G.state = 'hit'; G.streak = 0; G.missed.push(G.q); G.sinceMiss = 0; exchange(false, elapsed, 'NOT QUITE!'); }
+    if (ok) { G.state = 'block'; G.streak++; drawHud(); exchange(true, elapsed, null); alliesCheer(); allyIntercept(); }
+    else { G.state = 'hit'; G.streak = 0; G.missed.push(G.q); G.sinceMiss = 0; exchange(false, elapsed, 'NOT QUITE!'); sneakAttack(); }
   }
-  function timeout() { recordAnswer(false, G.timerMax, G.q); G.state = 'hit'; G.streak = 0; G.missed.push(G.q); G.sinceMiss = 0; lockAnswers(null); el.qpanel.classList.add('hide'); exchange(false, 99, 'TOO SLOW!'); }
+  function timeout() { recordAnswer(false, G.timerMax, G.q); G.state = 'hit'; G.streak = 0; G.missed.push(G.q); G.sinceMiss = 0; lockAnswers(null); el.qpanel.classList.add('hide'); exchange(false, 99, 'TOO SLOW!'); sneakAttack(); }
   const originPos = new THREE.Vector3(), shieldPos = new THREE.Vector3(); let firing = 0;
   function exchange(blocked, elapsed, title) {
     if (blocked) { SFX.block(); tween(0.22, shieldUp); }
@@ -1981,7 +2066,7 @@
     if (E.steps) { G.step = 0; const s0 = E.stepAt(0); KMARK.x = s0.x; KMARK.z = s0.z; KGY = s0.y; } else { KMARK.x = KMARK0.x; KMARK.z = KMARK0.z; KGY = GROUND; }
     if (E.doors) { E.doorsOpened = 0; E.doors.forEach(d => { d.L.rotation.y = 0; d.R.rotation.y = 0; }); E.mark.x = E.mark0.x; }
     if (E.weak) wait(1.4, () => popup('ONLY ' + WEAPON_NAME[E.weak] + ' HURTS IT!', '#60a5fa'));
-    knight.position.set(KMARK.x, KGY, KMARK.z); K.last.copy(knight.position); resetKnightPose(); Object.values(ENEMIES).forEach(e => e.reset()); drawHud(); ask();
+    knight.position.set(KMARK.x, KGY, KMARK.z); K.last.copy(knight.position); resetKnightPose(); Object.values(ENEMIES).forEach(e => e.reset()); resetGang(); drawHud(); ask();
   }
   function hideOverlays() { ['#ov-wrong', '#ov-death', '#ov-win', '#ov-start', '#ov-parent'].forEach(s => $(s).hidden = true); $('#ov-start').classList.remove('clear'); el.qpanel.classList.add('hide'); el.taunt.classList.remove('show'); }
 
@@ -2198,7 +2283,8 @@
     if (inCastle) { WORLDS.castle.userData.idle(t, dt); chest.gold.forEach((gm, i) => { gm.position.y = 1.0 + Math.sin(t * 3 + i) * 0.04; }); peopleGroup.children.forEach(pg => { const k = pg.userData.kind; if (k === 'horse') { pg.userData.horse.position.y = Math.abs(Math.sin(t * 1.3 + pg.userData.t)) * 0.05; pg.userData.horse.rotation.y = Math.sin(t * 0.4 + pg.userData.t) * 0.3; } else if (k === 'farm') { pg.userData.worker.rotation.z = Math.sin(t * 2.5 + pg.userData.t) * 0.2; } else { pg.rotation.y += Math.sin(t * 0.7 + pg.userData.t) * 0.002; pg.position.y = GROUND + Math.abs(Math.sin(t * 2 + pg.userData.t)) * 0.02; } }); }
     else if (inMap) { WORLDS.map.userData.idle(t, dt); stepMapLabels(); }
     else if (inside) { WORLDS.inside.userData.idle(t, dt); if (INSIDE.captive && !INSIDE.busy) { INSIDE.captive.rotation.y = Math.PI + 0.5 + Math.sin(t * 3) * 0.2; INSIDE.captive.position.y = GROUND + Math.abs(Math.sin(t * 5)) * 0.06; } }
-    else if (fighting || inBuilder) { if (fighting && E.actor) stepWalk(E.actor, dt); if (fighting && st !== 'won') E.idle(t, dt); WORLDS[currentLevel].userData.idle(t, dt); if (fighting) stepSpectators(t); }
+    else if (fighting || inBuilder) { if (fighting && E.actor) stepWalk(E.actor, dt); if (fighting && st !== 'won') E.idle(t, dt); WORLDS[currentLevel].userData.idle(t, dt); if (fighting) { stepSpectators(t); stepAllies(t, dt); } }
+    allyGroup.visible = fighting;
     if (K.bladeGlow) K.bladeGlow.material.opacity = 0.3 + Math.sin(t * 4) * 0.1;
     if (firing > 0) { firing -= dt; E.origin(originPos); K.aura.getWorldPosition(shieldPos); const dir = shieldPos.clone().sub(originPos).normalize().multiplyScalar(E.attackSpeed); emit(originPos, dir, 2.2, 0.62, E.attackColors, E.attackGravity, 6, 1); }
     if (st === 'question') { G.timeLeft -= dt; const k = Math.max(0, G.timeLeft / G.timerMax); el.fill.style.width = (k * 100) + '%'; const s = Math.ceil(Math.max(0, G.timeLeft)); el.timer.textContent = s; el.timer.classList.toggle('hot', s <= 3); if (s <= 3 && s !== lastTick && s > 0) { lastTick = s; SFX.tick(); } if (G.timeLeft <= 0) timeout(); }
